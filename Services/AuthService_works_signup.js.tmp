@@ -1,0 +1,132 @@
+const aws = require('aws-sdk');
+//Getting code
+//FB - https://ni-test-aut.auth.us-east-1.amazoncognito.com/oauth2/authorize?client_id=3s67a4ojitnpfrltv0eq780mgp&response_type=code&scope=aws.cognito.signin.user.admin+email+openid+phone+profile&redirect_uri=http://localhost:3000/success&identity_provider=Facebook
+
+//AWS.config.update({accessKeyId: 'AKIAW6X7TRHQNQJ4ZDZL', secretAccessKey: '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'});
+
+
+const COGNITO_POOL_REGION = "us-east-1";
+
+// const userPool = new AmazonCognitoIdentity.CognitoUserPool(poolData);
+
+const CognitoIdentityServiceProvider = new aws.CognitoIdentityServiceProvider({
+  apiVersion: '2016-04-19',
+  region: COGNITO_POOL_REGION
+});
+
+async function createUser(user) {
+  const { firstName, lastName, phoneNumber, email, password } = user;
+
+  try {
+    console.log(`creating a user in cognito. user name: ${user.phoneNumber}`);
+    const attributeList = [];
+    attributeList.push({
+      Name: 'given_name',
+      Value: firstName
+    });
+    attributeList.push({
+      Name: 'family_name',
+      Value: lastName
+    });
+    attributeList.push({
+      Name: 'name',
+      Value: `${firstName} ${lastName}`
+    });
+    attributeList.push({
+      Name: 'email',
+      Value: email
+    });
+
+
+    const SignUpRequest = {
+      ClientId: "3s67a4ojitnpfrltv0eq780mgp",
+      Username: email,
+      Password: password,
+      UserAttributes: attributeList
+    };
+
+    // await delay(API_CALL_DELAY);
+
+    return await CognitoIdentityServiceProvider.signUp(SignUpRequest).promise();
+  } catch (err) {
+    if (err.code === 'UsernameExistsException') {
+      console.info(`User: user name: ${user.firstName} already exists in cognito`, err);
+      return Promise.resolve({});
+    }
+    console.error(`error while creating a user in cognito. user name: ${user.firstName}`, err);
+    throw err;
+  }
+}
+
+exports.Register = async function (body, callback) {
+
+  createUser({firstName: "sergey2", lastName: "desyatkov2", email: "desyall2@gmail.com", password: '12345678Abz!'})
+      .then(data => {
+        // const cognitoUser = data.User;
+        callback(null, data);
+      }).catch(err => {
+        callback(err);
+      });
+};
+
+async function loginUser(user) {
+  const {email, password} = user;
+
+  let params = {
+    AuthFlow: "USER_PASSWORD_AUTH",
+    ClientId: "3s67a4ojitnpfrltv0eq780mgp",
+    // UserPoolId: "us-east-1_II1skHYh3",
+    AuthParameters: {
+      USERNAME: email,
+      PASSWORD: password
+    }
+  };
+
+  let adminParams = {
+    AuthFlow: "ADMIN_USER_PASSWORD_AUTH",
+    ClientId: "6vsle6pk89382pui4ho7taoo83",
+    // UserPoolId: "us-east-1_II1skHYh3",
+    AuthParameters: {
+      USERNAME: email,
+      PASSWORD: password,
+    },
+    UserPoolId:"us-east-1_II1skHYh3"
+  };
+
+  // return await CognitoIdentityServiceProvider.initiateAuth(params).promise();
+  return await CognitoIdentityServiceProvider.AdminInitiateAuth(adminParams).promise();
+}
+
+exports.Login = function (body, callback) {
+  loginUser({ email: "desyall2@gmail.com", password: '12345678Abz!'})
+      .then(data => {
+
+        const cognitoidentity = new body.req.AWS.CognitoIdentity({
+          region: 'us-east-1'
+        });
+
+        const getIdParams = {
+          IdentityPoolId: 'us-east-1_II1skHYh3',
+          Logins: {
+            'cognito-idp.us-east-1.amazonaws.com/us-east-1_us-east-1_II1skHYh3': data.AuthenticationResult.IdToken
+          }
+        };
+
+        cognitoidentity.getCredentialsForIdentity(getCredentialsParams, function(err, credentials) {
+          if (err)
+          {
+            console.log(err, err.stack);
+          }
+          else
+          {
+            callback(null, credentials);
+          }
+        });
+
+
+      }).catch(err => {
+        callback(err);
+      });
+};
+
+exports.Validate = function (token, callback) {};
